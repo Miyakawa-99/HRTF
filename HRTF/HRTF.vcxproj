@@ -80,7 +80,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\libsndfile\include;C:\Users\haru1\source\repos\HRTF\HRTF\include;$(IncludePath)</IncludePath>
+    <IncludePath>C:\libsndfile\include;C:\Users\haru1\source\repos\HRTF\HRTF\include;C:\Users\haru1\Downloads\chapter09\chapter09\ex9_3;$(IncludePath)</IncludePath>
     <LibraryPath>C:\libsndfile\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
