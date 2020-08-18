@@ -33,7 +33,7 @@ LRESULT wmWomDone(void);
 /* -----------
    Main Program
     ------------ */
-INT WINAPI WinMain(HINSTANCE hInstance,
+int main(HINSTANCE hInstance,
     HINSTANCE hPrevInstance,
     LPSTR lpszCmdLine, INT nCmdShow)
 {
