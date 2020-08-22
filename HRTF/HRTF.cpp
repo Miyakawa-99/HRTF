@@ -15,32 +15,26 @@
 #define FFTSIZE  2048
 #define SAMPLE_RATE 44100 //sampling rate
 #define AMPLITUDE 1.0// 16bit
-
 #pragma warning(disable : 4996)
+
 int AudioFileWriter(const char* filename, SF_INFO* sfinfo, float* data)
 {
-
     SNDFILE* sfr;
     SF_INFO sfinfo_out = *sfinfo;
-
 
     //open file
     if (!(sfr = sf_open(filename, SFM_WRITE, &sfinfo_out))) {
         printf("Error : Could not open output file .\n");
         return 0;
     }
-    std::cout <<"frame: "<< sfinfo->frames << std::endl;
-    /*for (int j = 0; j < FFTSIZE; j++) {
-        std::cout <<"InputData: "<< data[j] << std::endl;
-    }*/
-    if (!(sf_writef_float(sfr, data, sfinfo->frames))) {
+
+    if (!(sf_writef_float(sfr, data, (long long)(sfinfo->frames / FFTSIZE)*FFTSIZE))) {
         printf("Error : 0 data has been written.\n");
         return 0;
     }
 
     sf_close(sfr);
     return 1;
-
 }
 
 float* AudioFileLoader(const char* filename, SF_INFO* sfinfo, float* data)
@@ -81,13 +75,11 @@ float* AudioFileLoader(const char* filename, SF_INFO* sfinfo, float* data)
     sf_readf_float(sfr, data, sfinfo->frames);
     sf_close(sfr);
     return data; // success
-
-
 }
+
 int applyHRTF(MONO_PCM source, int deg, int elev)
 {
     STEREO_PCM appliedSource; /* ステレオの音データ */
-    SNDFILE* sfr;
     SF_INFO sfinfo;
     const char* filename = "asano2.wav";
     const char* generatename = "result.wav";
@@ -100,42 +92,31 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     }
     else std::cout << "OpenFile: " << filename << std::endl;
 
-    long long frame_num = (int)(sfinfo.frames / FFTSIZE);
-    //int		dataSize = 1024;
+    long long frame_num = (long long)(sfinfo.frames / FFTSIZE);
     int		FREQ_OF_DATA = 1;
 
     // 入力、出力配列のメモリ確保
     fftwf_complex* src = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     fftwf_complex* dst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     fftwf_complex* dst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    float* outdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
 
-    //float* outdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
-    float* outdata = (float*)calloc(sfinfo.frames, sizeof(float));
     //for FFT analysis
-    float* buffer;
-    buffer = (float*)malloc(FFTSIZE * sizeof(float));
     //scalling
     float scale = 1.0 / FFTSIZE;
     std::cout << "Scale: " << scale << std::endl;
-    std::cout << "MAX: "<< frame_num * OVERLAP - 1 << std::endl;
-    //for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
+
+    for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
+
         //copy data
         for (int j = 0; j < FFTSIZE; j++) {
-            //buffer[j] = data[i * FFTSIZE / OVERLAP + j];
-
-            src[j][0] = data[j];
+            src[j][0] = data[i * FFTSIZE / OVERLAP + j];
             src[j][1] = 0;
-            //std::cout << frame_num * OVERLAP - 1 << std::endl;
-             
-            //mono_wave_read(&source, (char*)"sample08.wav");
-            //std::cout <<"R: "<< src[j][0] << ",I; " << src[j][1] << std::endl;
-            //std::cout << source.s[i * FFTSIZE / OVERLAP + j] << std::endl;
         }
 
         // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
         fftwf_plan plan = fftwf_plan_dft_1d(FFTSIZE, src, dst, FFTW_FORWARD, FFTW_ESTIMATE);
-
-        // フーリエ変換実行 プラン生成時に指定した出力配列に結果が格納される。
+        // フーリエ変換実行 
         fftwf_execute(plan);
         if (plan) fftwf_destroy_plan(plan);
         /*
@@ -143,34 +124,21 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
        */
        // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
         fftwf_plan plan2 = fftwf_plan_dft_1d(FFTSIZE, dst, dst2, FFTW_BACKWARD, FFTW_ESTIMATE);
-        // フーリエ変換実行 プラン生成時に指定した出力配列に結果が格納される。
+        // フーリエ変換実行
         fftwf_execute(plan2);
+
         //add data
-        for (int j = 0; j < FFTSIZE; j++) {
-            outdata[j] = scale * dst2[j][0];
-            //std::cout << dst2[j][0] << std::endl;
-            //outdata[i * FFTSIZE / OVERLAP + j] += dst2[j][0];
-        }
+        for (int j = 0; j < FFTSIZE; j++)
+            outdata[i * FFTSIZE / OVERLAP + j] += scale * dst2[j][0];
         if (plan2) fftwf_destroy_plan(plan2);
-   // }
-
-
-    /*for (int j = 0; j < FFTSIZE; j++)
-        std::cout <<"OutData: "<< outdata[j] << std::endl;*/
+    }
 
     if (!AudioFileWriter("result.wav", &sfinfo, outdata)) {
         printf("Could not Write Audio file\n");
         return 0;
     }
-    /*// 入力データを作成
-    for (int i = 0; i < FFTSIZE; i++)
-    {
-        src[i][0] = sin((float)i * 2 * FREQ_OF_DATA / (float)FFTSIZE * M_PI);
-        src[i][1] = 0;
-    }*/
 
     // 入出力配列の値をcsvファイルに保存
-
     std::fstream fs_src("src.csv", std::ios::out);
     std::fstream fs_dst("dst.csv", std::ios::out);
     std::fstream fs_out("output.csv", std::ios::out);
