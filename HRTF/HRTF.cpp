@@ -160,9 +160,6 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     fftw_free(dst2);
     free(data);
 
-    int c;
-    std::cin >> c;
-
     return 0;
 }
 
