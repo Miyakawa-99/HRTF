@@ -80,7 +80,7 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>C:\libsndfile\include;C:\Users\haru1\source\repos\HRTF\HRTF\include;C:\Users\haru1\Downloads\chapter09\chapter09\ex9_3;C:\FFTW;$(IncludePath)</IncludePath>
+    <IncludePath>C:\libsndfile\include;C:\Users\haru1\source\repos\HRTF\HRTF\include;C:\FFTW;$(IncludePath)</IncludePath>
     <LibraryPath>C:\libsndfile\lib;C:\FFTW;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -149,8 +149,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="HRTF.cpp" />
-    <ClCompile Include="wavread.cpp" />
-    <ClCompile Include="wavwrite.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

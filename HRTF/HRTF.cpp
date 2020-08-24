@@ -17,66 +17,6 @@
 #define AMPLITUDE 1.0// 16bit
 #pragma warning(disable : 4996)
 
-int AudioFileWriter(const char* filename, SF_INFO* sfinfo, float* data)
-{
-    SNDFILE* sfr;
-    SF_INFO sfinfo_out = *sfinfo;
-
-    //open file
-    if (!(sfr = sf_open(filename, SFM_WRITE, &sfinfo_out))) {
-        printf("Error : Could not open output file .\n");
-        return 0;
-    }
-
-    if (!(sf_writef_float(sfr, data, (long long)(sfinfo->frames / FFTSIZE)*FFTSIZE))) {
-        printf("Error : 0 data has been written.\n");
-        return 0;
-    }
-
-    sf_close(sfr);
-    return 1;
-}
-
-float* AudioFileLoader(const char* filename, SF_INFO* sfinfo, float* data)
-{
-
-    SNDFILE* sfr;
-
-    //open file
-    if (!(sfr = sf_open(filename, SFM_READ, sfinfo))) {
-        printf("Error : Could not open output file .\n");
-        return 0;
-    }
-
-
-    // format should be Wav or Aiff
-    if (sfinfo->format == 0x010002 || sfinfo->format == 0x020002) {// 16bit
-
-    }
-    else {
-        printf("Error : Could not open! file format is not WAV or AIFF\n");
-        return 0;
-    }
-
-    if (sfinfo->samplerate != 44100) {
-        printf("Error : Samplingrate is not 44.1kHz : %d\n", sfinfo->samplerate);
-        return 0;
-    }
-
-    if (sfinfo->channels != 1) {
-        printf("Error : Audio file is not MONO\n");
-        return 0;
-    }
-
-    //allocate
-    data = (float*)calloc(sfinfo->frames, sizeof(float));
-
-    //read data
-    sf_readf_float(sfr, data, sfinfo->frames);
-    sf_close(sfr);
-    return data; // success
-}
-
 int applyHRTF(MONO_PCM source, int deg, int elev)
 {
     STEREO_PCM appliedSource; /* ステレオの音データ */
@@ -227,11 +167,6 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     free(appliedSource.sL); /* メモリの解放 */
     free(appliedSource.sR); /* メモリの解放 */
 
-
-    if (!AudioFileWriter(generatename, &sfinfo, Loutdata)) {
-        printf("Could not Write Audio file\n");
-        return 0;
-    }
 
     /*// 入出力配列の値をcsvファイルに保存
     std::fstream fs_src("src.csv", std::ios::out);
