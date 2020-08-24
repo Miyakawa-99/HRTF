@@ -227,12 +227,13 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     free(appliedSource.sL); /* メモリの解放 */
     free(appliedSource.sR); /* メモリの解放 */
 
+
     if (!AudioFileWriter(generatename, &sfinfo, Loutdata)) {
         printf("Could not Write Audio file\n");
         return 0;
     }
 
-    // 入出力配列の値をcsvファイルに保存
+    /*// 入出力配列の値をcsvファイルに保存
     std::fstream fs_src("src.csv", std::ios::out);
     std::fstream fs_dst("dst.csv", std::ios::out);
     std::fstream fs_out("output.csv", std::ios::out);
@@ -246,7 +247,7 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
         fs_src << src[i][0] << "," << src[i][1] << std::endl;
         fs_dst << FFTleft[i][0] << "," << FFTleft[i][1] << std::endl;
         fs_out << Loutdata[i] << "," << Ldst2[i][1] << std::endl;
-    }
+    }*/
 
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
@@ -258,9 +259,12 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     fftw_free(Rdst);
     fftw_free(Ldst2);
     fftw_free(Rdst2);
-    //fftw_free(Loutdata);
-    //fftw_free(Routdata);
     free(data);
+    free(Ldata);
+    free(Rdata);
+    free(Loutdata);
+    free(Routdata);
+
 
     return 0;
 }
@@ -269,37 +273,13 @@ int main(void)
 {
     printf("START!!!\n");
     MONO_PCM pcm0; /* モノラルの音データ */
-    STEREO_PCM pcm1; /* ステレオの音データ */
     int n;
     double a, depth, rate;
 
     mono_wave_read(&pcm0, (char*)"sample08.wav"); /* WAVEファイルからモノラルの音データを入力する */
     applyHRTF(pcm0, 10, 5);
 
-    pcm1.fs = pcm0.fs; /* 標本化周波数 */
-    pcm1.bits = pcm0.bits; /* 量子化精度 */
-    pcm1.length = pcm0.length; /* 音データの長さ */
-    pcm1.sL = (double*)calloc(pcm1.length, sizeof(double)); /* メモリの確保 */
-    pcm1.sR = (double*)calloc(pcm1.length, sizeof(double)); /* メモリの確保 */
-
-    depth = 1.0;
-    rate = 0.2; /* 0.2Hz */
-
-    /* オートパン */
-    for (n = 0; n < pcm1.length; n++)
-    {
-        a = 1.0 + depth * sin(2.0 * M_PI * rate * n / pcm1.fs);
-        pcm1.sL[n] = a * pcm0.s[n];
-
-        a = 1.0 + depth * sin(2.0 * M_PI * rate * n / pcm1.fs + M_PI);
-        pcm1.sR[n] = a * pcm0.s[n];
-    }
-
-    stereo_wave_write(&pcm1, (char*)"practice.wav"); /* WAVEファイルにステレオの音データを出力する */
-    //std::cout << pcm0.fs << "," << pcm0.bits<< "," << pcm0.length << std::endl;
     free(pcm0.s); /* メモリの解放 */
-    free(pcm1.sL); /* メモリの解放 */
-    free(pcm1.sR); /* メモリの解放 */
 
     return 0;
 }
