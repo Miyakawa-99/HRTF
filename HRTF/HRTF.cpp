@@ -5,14 +5,14 @@
 #include <iostream>
 #include <windows.h>
 #include "wave.h"
-#include <complex.h>
+#include <complex>
 #include <fftw3.h>
 #include <sndfile.h>
 
 #define M_PI 3.14159265358979323846264338
 #define BUFFER_COUNT 2 // マルチバッファ数
 #define OVERLAP  2
-#define FFTSIZE  2048
+#define FFTSIZE 1024
 #define SAMPLE_RATE 44100 //sampling rate
 #define AMPLITUDE 1.0// 16bit
 #pragma warning(disable : 4996)
@@ -81,30 +81,91 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
 {
     STEREO_PCM appliedSource; /* ステレオの音データ */
     SF_INFO sfinfo;
+    SF_INFO Lsfinfo;
+    SF_INFO Rsfinfo;
+
     const char* filename = "asano2.wav";
     const char* generatename = "result.wav";
+    const char* Lhrtf = "L40e032a.wav";
+    const char* Rhrtf = "R40e032a.wav";
 
     float* data = NULL;
+    float* Ldata = NULL;
+    float* Rdata = NULL;
+
 
     if (!(data = AudioFileLoader(filename, &sfinfo, data))) {
         printf("Could not open Audio file\n");
         return 0;
-    }
-    else std::cout << "OpenFile: " << filename << std::endl;
+    }else std::cout << "OpenFile: " << filename << std::endl;
+
+    if (!(Ldata = AudioFileLoader(Lhrtf, &Lsfinfo, Ldata))) {
+        printf("Could not open Audio file\n");
+        return 0;
+    }else std::cout << "OpenFile: " << Lhrtf << std::endl;
+    if (!(Rdata = AudioFileLoader(Rhrtf, &Rsfinfo, Rdata))) {
+        printf("Could not open Audio file\n");
+        return 0;
+    }else std::cout << "OpenFile: " << Rhrtf << std::endl;
+
 
     long long frame_num = (long long)(sfinfo.frames / FFTSIZE);
-    int		FREQ_OF_DATA = 1;
 
-    // 入力、出力配列のメモリ確保
+    // 入力配列のメモリ確保
     fftwf_complex* src = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-    fftwf_complex* dst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-    fftwf_complex* dst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-    float* outdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
+    // 入力配列FFT後メモリ確保
+    fftwf_complex* Ldst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    // 入力配列FFT後メモリ確保
+    fftwf_complex* Rdst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+
+
+    // LeftHRTF配列のメモリ確保
+    fftwf_complex* left = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    // LeftHRTF配列FFT後メモリ確保
+    fftwf_complex* FFTleft = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+
+    // RightHRTF配列のメモリ確保
+    fftwf_complex* right = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    // RightHRTF配列FFT後メモリ確保
+    fftwf_complex* FFTright = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+
+    // 最終出力配列
+    fftwf_complex* Ldst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    fftwf_complex* Rdst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+
+    float* Loutdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
+    float* Routdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
 
     //for FFT analysis
     //scalling
-    float scale = 1.0 / FFTSIZE;
+    float scale = 1.0 / FFTSIZE*OVERLAP;
     std::cout << "Scale: " << scale << std::endl;
+
+    //LeftHRTF
+    for (int j = 0; j < FFTSIZE; j++) {
+        if (j < FFTSIZE / 2) {
+            left[j][0] = 0;
+            left[j][1] = 0;
+            right[j][0] = 0;
+            right[j][1] = 0;
+        }
+        else {
+            left[j][0] = Ldata[j- FFTSIZE / 2];
+            left[j][1] = 0;
+            right[j][0] = Rdata[j - FFTSIZE / 2];
+            right[j][1] = 0;
+        }
+    }
+    // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
+    fftwf_plan leftplan = fftwf_plan_dft_1d(FFTSIZE, left, FFTleft, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftwf_plan rightplan = fftwf_plan_dft_1d(FFTSIZE, right, FFTright, FFTW_FORWARD, FFTW_ESTIMATE);
+
+    // フーリエ変換実行 
+    fftwf_execute(leftplan);
+    if (leftplan) fftwf_destroy_plan(leftplan);
+    fftwf_execute(rightplan);
+    if (rightplan) fftwf_destroy_plan(rightplan);
+
 
     for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
 
@@ -115,25 +176,58 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
         }
 
         // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
-        fftwf_plan plan = fftwf_plan_dft_1d(FFTSIZE, src, dst, FFTW_FORWARD, FFTW_ESTIMATE);
+        fftwf_plan plan = fftwf_plan_dft_1d(FFTSIZE, src, Ldst, FFTW_FORWARD, FFTW_ESTIMATE);
         // フーリエ変換実行 
         fftwf_execute(plan);
         if (plan) fftwf_destroy_plan(plan);
-        /*
-         ここに処理を書く
-       */
+
+        /* ここに処理を書く */
+        for (int j = 0; j < FFTSIZE; j++) {
+            std::complex<float> s(Ldst[j][0], Ldst[j][1]);
+            std::complex<float> l(FFTleft[j][0], FFTleft[j][1]);
+            std::complex<float> sl = s*l;
+            Ldst[j][0] = sl.real();
+            Ldst[j][1] = sl.imag();
+            // RIGHT
+            std::complex<float> r(FFTright[j][0], FFTright[j][1]);
+            std::complex<float> sr = s * r;
+            Rdst[j][0] = sr.real();
+            Rdst[j][1] = sr.imag();
+        }
+
        // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
-        fftwf_plan plan2 = fftwf_plan_dft_1d(FFTSIZE, dst, dst2, FFTW_BACKWARD, FFTW_ESTIMATE);
+        fftwf_plan leftplan2 = fftwf_plan_dft_1d(FFTSIZE, Ldst, Ldst2, FFTW_BACKWARD, FFTW_ESTIMATE);
+        fftwf_plan rightplan2 = fftwf_plan_dft_1d(FFTSIZE, Rdst, Rdst2, FFTW_BACKWARD, FFTW_ESTIMATE);
+
         // フーリエ変換実行
-        fftwf_execute(plan2);
+        fftwf_execute(leftplan2);
+        fftwf_execute(rightplan2);
 
         //add data
-        for (int j = 0; j < FFTSIZE; j++)
-            outdata[i * FFTSIZE / OVERLAP + j] += scale * dst2[j][0];
-        if (plan2) fftwf_destroy_plan(plan2);
+        for (int j = 0; j < FFTSIZE / 2; j++) {//? 
+            Loutdata[i * FFTSIZE / OVERLAP + j] = scale * Ldst2[j][0];//scale...?
+            Routdata[i * FFTSIZE / OVERLAP + j] = scale * Rdst2[j][0];//scale...?
+        }
+        if (leftplan2) fftwf_destroy_plan(leftplan2);
+        if (rightplan2) fftwf_destroy_plan(rightplan2);
+
     }
 
-    if (!AudioFileWriter("result.wav", &sfinfo, outdata)) {
+    appliedSource.fs = sfinfo.samplerate; /* 標本化周波数 */
+    appliedSource.bits = 16; /* 量子化精度 */
+    appliedSource.length = sfinfo.frames; /* 音データの長さ */
+    appliedSource.sL = (double*)calloc(appliedSource.length, sizeof(double)); /* メモリの確保 */
+    appliedSource.sR = (double*)calloc(appliedSource.length, sizeof(double)); /* メモリの確保 */
+    for (int n = 0; n < appliedSource.length; n++)
+    {
+        appliedSource.sL[n] = Loutdata[n];
+        appliedSource.sR[n] = Routdata[n];
+    }
+    stereo_wave_write(&appliedSource, (char*)"resultPan.wav"); /* WAVEファイルにステレオの音データを出力する */
+    free(appliedSource.sL); /* メモリの解放 */
+    free(appliedSource.sR); /* メモリの解放 */
+
+    if (!AudioFileWriter(generatename, &sfinfo, Loutdata)) {
         printf("Could not Write Audio file\n");
         return 0;
     }
@@ -150,14 +244,22 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     for (int i = 0; i < FFTSIZE; i++)
     {
         fs_src << src[i][0] << "," << src[i][1] << std::endl;
-        fs_dst << dst2[i][0] << "," << dst2[i][1] << std::endl;
-        fs_out << outdata[i] << "," << dst2[i][1] << std::endl;
+        fs_dst << FFTleft[i][0] << "," << FFTleft[i][1] << std::endl;
+        fs_out << Loutdata[i] << "," << Ldst2[i][1] << std::endl;
     }
 
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
-    fftw_free(dst);
-    fftw_free(dst2);
+    fftw_free(left);
+    fftw_free(right);
+    fftw_free(FFTleft);
+    fftw_free(FFTright);
+    fftw_free(Ldst);
+    fftw_free(Rdst);
+    fftw_free(Ldst2);
+    fftw_free(Rdst2);
+    //fftw_free(Loutdata);
+    //fftw_free(Routdata);
     free(data);
 
     return 0;
