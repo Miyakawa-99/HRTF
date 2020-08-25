@@ -331,6 +331,10 @@ float* AudioFileLoader(const char* filename, SF_INFO* sfinfo, float* data)
     data = (float*)calloc(sfinfo->frames, sizeof(float));
     //read data
     sf_readf_float(sfr, data, sfinfo->frames);
+    if (!data) {
+        printf("Could not open Audio file\n");
+        return 0;
+    }
     sf_close(sfr);
     return data; // success
 }

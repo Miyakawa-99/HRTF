@@ -13,7 +13,7 @@
 #define BUFFER_COUNT 2 // マルチバッファ数
 #define OVERLAP  2
 #define FFTSIZE 1024
-#define SAMPLE_RATE 44100 //sampling rate
+#define SAMPLE_RATE 44100 
 #define AMPLITUDE 1.0// 16bit
 #pragma warning(disable : 4996)
 
@@ -24,40 +24,35 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     SF_INFO Lsfinfo;
     SF_INFO Rsfinfo;
 
-    const char* filename = "asano2.wav";
-    const char* generatename = "result.wav";
-    const char* Lhrtf = "L40e032a.wav";
-    const char* Rhrtf = "R40e032a.wav";
+    const char* filename = "../SoundData/input/asano.wav";
+    const char* generatename = "../SoundData/output/result.wav";
+    const char* Lhrtf = "../SoundData/HRTFfull/elev40/L40e032a.wav";
+    const char* Rhrtf = "../SoundData/HRTFfull/elev40/R40e032a.wav";
 
     float* data = NULL;
     float* Ldata = NULL;
     float* Rdata = NULL;
 
+    //Audio,インパルス応答の読み込み
+    if (!(data = AudioFileLoader(filename, &sfinfo, data))) return 0;
+    else std::cout << "OpenFile: " << filename << std::endl;
 
-    if (!(data = AudioFileLoader(filename, &sfinfo, data))) {
-        printf("Could not open Audio file\n");
-        return 0;
-    }else std::cout << "OpenFile: " << filename << std::endl;
+    if (!(Ldata = AudioFileLoader(Lhrtf, &Lsfinfo, Ldata))) return 0;
+    else std::cout << "OpenFile: " << Lhrtf << std::endl;
 
-    if (!(Ldata = AudioFileLoader(Lhrtf, &Lsfinfo, Ldata))) {
-        printf("Could not open Audio file\n");
-        return 0;
-    }else std::cout << "OpenFile: " << Lhrtf << std::endl;
-    if (!(Rdata = AudioFileLoader(Rhrtf, &Rsfinfo, Rdata))) {
-        printf("Could not open Audio file\n");
-        return 0;
-    }else std::cout << "OpenFile: " << Rhrtf << std::endl;
+    if (!(Rdata = AudioFileLoader(Rhrtf, &Rsfinfo, Rdata))) return 0;
+    else std::cout << "OpenFile: " << Rhrtf << std::endl;
 
 
     long long frame_num = (long long)(sfinfo.frames / FFTSIZE);
 
+
     // 入力配列のメモリ確保
-    fftwf_complex* src = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    fftwf_complex* src= (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     // 入力配列FFT後メモリ確保
     fftwf_complex* Ldst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     // 入力配列FFT後メモリ確保
     fftwf_complex* Rdst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-
 
     // LeftHRTF配列のメモリ確保
     fftwf_complex* left = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
@@ -153,7 +148,7 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
 
     }
 
-    appliedSource.fs = sfinfo.samplerate; /* 標本化周波数 */
+    appliedSource.fs = SAMPLE_RATE; /* 標本化周波数 */
     appliedSource.bits = 16; /* 量子化精度 */
     appliedSource.length = sfinfo.frames; /* 音データの長さ */
     appliedSource.sL = (double*)calloc(appliedSource.length, sizeof(double)); /* メモリの確保 */
@@ -163,7 +158,8 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
         appliedSource.sL[n] = Loutdata[n];
         appliedSource.sR[n] = Routdata[n];
     }
-    stereo_wave_write(&appliedSource, (char*)"resultPan.wav"); /* WAVEファイルにステレオの音データを出力する */
+    //ここで音声出力bufferに流せばよい？
+    stereo_wave_write(&appliedSource, (char*)generatename); /* WAVEファイルにステレオの音データを出力する */
     free(appliedSource.sL); /* メモリの解放 */
     free(appliedSource.sR); /* メモリの解放 */
 
@@ -208,8 +204,6 @@ int main(void)
 {
     printf("START!!!\n");
     MONO_PCM pcm0; /* モノラルの音データ */
-    int n;
-    double a, depth, rate;
 
     mono_wave_read(&pcm0, (char*)"sample08.wav"); /* WAVEファイルからモノラルの音データを入力する */
     applyHRTF(pcm0, 10, 5);
