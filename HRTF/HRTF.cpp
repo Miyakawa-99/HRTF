@@ -213,78 +213,119 @@
     return 0;
 }*/
 
+#include <stdio.h>
+#include <math.h>
+#include "portaudio.h"
 
+#define SAMPLE_RATE (44100)
+#define PA_SAMPLE_TYPE paFloat32
+#define FRAMES_PER_BUFFER (64)
 
-#include<stdio.h>
-#include<math.h>
-#include"portaudio.h"
-#define Fs 44100 //サンプリング周波数
-#define FRAMES_PER_BUFFER 128 //バッファサイズ
-#define pi 3.14159265358979323
+typedef float SAMPLE;
 
-/*ユーザ定義データ*/
-typedef struct {
-    float freq; //正弦波の周波数
-    float index;
-}padata;
-
-/* オーディオ処理コールバック関数*/
-static int dsp(const void* inputBuffer, //入力
-    void* outputBuffer, //出力
+static int ioCallback(const void* inputBuffer, void* outputBuffer,
     unsigned long framesPerBuffer,
     const PaStreamCallbackTimeInfo* timeInfo,
     PaStreamCallbackFlags statusFlags,
-    void* userData //ユーザ定義データ 
-) {
-    padata* data = (padata*)userData;
-    float* out = (float*)outputBuffer;
-    long i;
+    void* userData)
+{
+    SAMPLE* out = (SAMPLE*)outputBuffer;
+    const SAMPLE* in = (const SAMPLE*)inputBuffer;
+    unsigned int i;
+    (void)timeInfo; /* Prevent unused variable warnings. */
+    (void)statusFlags;
+    (void)userData;
 
-    for (i = 0; i < framesPerBuffer; i++) {
-        *out++ = 0.7 * sin(2 * pi * data->freq * data->index / Fs); //チャンネル1（左）
-        *out++ = 0.7 * sin(2 * pi * data->freq * data->index / Fs); //チャンネル2（右）
-        data->index += 1.f;
+    if (inputBuffer == NULL)
+    {
+        for (i = 0; i < framesPerBuffer; i++)
+        {
+            *out++ = 0;
+            *out++ = 0;
+        }
     }
-    return 0;
+    else
+    {
+        for (i = 0; i < framesPerBuffer; i++)
+        {
+            *out++ = *in;
+            *out++ = *in++;
+        }
+    }
+
+    return paContinue;
 }
-int main(void) {
-    PaStreamParameters outParam; //出力の定義
+
+int main(void)
+{
+    PaStreamParameters inputParameters, outputParameters;
     PaStream* stream;
     PaError err;
-    padata data; //ユーザ定義データ
-    data.freq = 800.f;
-    data.index = 0.f;
 
-    //PortAudio初期化
-    Pa_Initialize();
+    err = Pa_Initialize();
+    if (err != paNoError) {
+        Pa_Terminate();
+        return 1;
+    }
 
-    //出力の設定
-    outParam.device = Pa_GetDefaultOutputDevice(); //デフォルトのオーディオデバイス
-    outParam.channelCount = 2;
-    outParam.sampleFormat = paFloat32; //32bit floatで処理
-    outParam.suggestedLatency = Pa_GetDeviceInfo(outParam.device)->defaultLowOutputLatency;
-    outParam.hostApiSpecificStreamInfo = NULL;
+    inputParameters.device = Pa_GetDefaultInputDevice(); /* デフォルトインプットデバイス */
+    if (inputParameters.device == paNoDevice) {
+        printf("Error: No default input device.\n");
+        Pa_Terminate();
+        return 1;
+    }
+    inputParameters.channelCount = 1; /* モノラルインプット */
+    inputParameters.sampleFormat = PA_SAMPLE_TYPE;
+    inputParameters.suggestedLatency = Pa_GetDeviceInfo(inputParameters.device)->defaultLowInputLatency;
+    inputParameters.hostApiSpecificStreamInfo = NULL;
 
-    //PortAudioオープン
-    Pa_OpenStream(
+    outputParameters.device = Pa_GetDefaultOutputDevice(); /* デフォルトアウトプットデバイス */
+    if (outputParameters.device == paNoDevice) {
+        printf("Error: No default output device.\n");
+        Pa_Terminate();
+        return 1;
+    }
+    outputParameters.channelCount = 2; /* ステレオアウトプット */
+    outputParameters.sampleFormat = PA_SAMPLE_TYPE;
+    outputParameters.suggestedLatency = Pa_GetDeviceInfo(outputParameters.device)->defaultLowOutputLatency;
+    outputParameters.hostApiSpecificStreamInfo = NULL;
+
+    err = Pa_OpenStream(
         &stream,
-        NULL,
-        &outParam,
-        Fs,
+        &inputParameters,
+        &outputParameters,
+        SAMPLE_RATE,
         FRAMES_PER_BUFFER,
-        paClipOff,
-        dsp,
-        &data);
+        0, /* paClipOff, */ /* we won't output out of range samples so don't bother clipping them */
+        ioCallback,
+        NULL);
 
-    //PortAudioスタート
-    Pa_StartStream(stream);
+    if (err != paNoError) {
+        Pa_Terminate();
+        return 1;
+    }
 
-    //エンターキーが押されるまで待機
+    err = Pa_StartStream(stream);
+    if (err != paNoError) {
+        Pa_Terminate();
+        return 1;
+    }
+
+    printf("Hit ENTER to stop program.\n");
     getchar();
+    err = Pa_StopStream(stream);
+    if (err != paNoError) {
+        Pa_Terminate();
+        return 1;
+    }
 
-    //PortAudio終了
-    Pa_StopStream(stream);
-    Pa_CloseStream(stream);
+    err = Pa_CloseStream(stream);
+    if (err != paNoError) {
+        Pa_Terminate();
+        return 1;
+    }
+
+    printf("Finished\n");
     Pa_Terminate();
     return 0;
 }
