@@ -13,7 +13,7 @@ static const char* lpClassTitle = "First WindowsApplication";
 static const char* lpMenuName = "My Menu";
 
 wav_head bufhead;
-static char InFileN[] = { "C:\\Users\\haru1\\source\\repos\\HRTF\\x64\\Debug\\fot.bak.441.wav" }; 
+static char InFileN[] = { "C:\\Users\\haru1\\source\\repos\\HRTF\\SoundData\\input\\fot.bak.441.wav" }; 
 int bufferSize;    // waveバッファサイズ(byte)
 int bufferLength;  // waveバッファ長(データ数/s)
 int bufferSelect;  // バッファ選択番号
