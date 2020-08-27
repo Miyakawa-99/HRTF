@@ -17,7 +17,7 @@
 #define AMPLITUDE 1.0// 16bit
 #pragma warning(disable : 4996)
 
-/*int applyHRTF(MONO_PCM source, int deg, int elev)
+int applyHRTF(MONO_PCM source, int deg, int elev)
 {
     STEREO_PCM appliedSource; // ステレオの音データ
     SF_INFO sfinfo;
@@ -139,9 +139,9 @@
         fftwf_execute(rightplan2);
 
         //add data
-        for (int j = 0; j < FFTSIZE / 2; j++) {//? 
-            Loutdata[i * FFTSIZE / OVERLAP + j] = scale * Ldst2[j][0];//scale...?
-            Routdata[i * FFTSIZE / OVERLAP + j] = scale * Rdst2[j][0];//scale...?
+        for (int j = 0; j < FFTSIZE / 2; j++) {
+            Loutdata[i * FFTSIZE / OVERLAP + j] = scale * Ldst2[j][0];
+            Routdata[i * FFTSIZE / OVERLAP + j] = scale * Rdst2[j][0];
         }
         if (leftplan2) fftwf_destroy_plan(leftplan2);
         if (rightplan2) fftwf_destroy_plan(rightplan2);
@@ -165,7 +165,7 @@
 
 
     // 入出力配列の値をcsvファイルに保存
-    std::fstream fs_src("src.csv", std::ios::out);
+    /*std::fstream fs_src("src.csv", std::ios::out);
     std::fstream fs_dst("dst.csv", std::ios::out);
     std::fstream fs_out("output.csv", std::ios::out);
 
@@ -178,7 +178,7 @@
         fs_src << src[i][0] << "," << src[i][1] << std::endl;
         fs_dst << FFTleft[i][0] << "," << FFTleft[i][1] << std::endl;
         fs_out << Loutdata[i] << "," << Ldst2[i][1] << std::endl;
-    }
+    }*/
 
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
@@ -198,7 +198,7 @@
 
 
     return 0;
-}*/
+}
 
 /*int main(void)
 {
@@ -258,7 +258,7 @@ static int ioCallback(const void* inputBuffer, void* outputBuffer,
 
 int main(void)
 {
-    PaStreamParameters inputParameters, outputParameters;
+    PaStreamParameters outputParameters;
     PaStream* stream;
     PaError err;
 
@@ -267,17 +267,6 @@ int main(void)
         Pa_Terminate();
         return 1;
     }
-
-    inputParameters.device = Pa_GetDefaultInputDevice(); /* デフォルトインプットデバイス */
-    if (inputParameters.device == paNoDevice) {
-        printf("Error: No default input device.\n");
-        Pa_Terminate();
-        return 1;
-    }
-    inputParameters.channelCount = 1; /* モノラルインプット */
-    inputParameters.sampleFormat = PA_SAMPLE_TYPE;
-    inputParameters.suggestedLatency = Pa_GetDeviceInfo(inputParameters.device)->defaultLowInputLatency;
-    inputParameters.hostApiSpecificStreamInfo = NULL;
 
     outputParameters.device = Pa_GetDefaultOutputDevice(); /* デフォルトアウトプットデバイス */
     if (outputParameters.device == paNoDevice) {
@@ -292,7 +281,7 @@ int main(void)
 
     err = Pa_OpenStream(
         &stream,
-        &inputParameters,
+        NULL,
         &outputParameters,
         SAMPLE_RATE,
         FRAMES_PER_BUFFER,
