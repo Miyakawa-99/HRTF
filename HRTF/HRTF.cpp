@@ -8,16 +8,20 @@
 #include <complex>
 #include <fftw3.h>
 #include <sndfile.h>
+#include "portaudio.h"
+
+#define PA_SAMPLE_TYPE paFloat32
+#define FRAMES_PER_BUFFER (512)
+typedef float SAMPLE;
 
 #define M_PI 3.14159265358979323846264338
 #define BUFFER_COUNT 2 // マルチバッファ数
 #define OVERLAP  2
 #define FFTSIZE 1024
 #define SAMPLE_RATE 44100 
-#define AMPLITUDE 1.0// 16bit
 #pragma warning(disable : 4996)
 
-int applyHRTF(MONO_PCM source, int deg, int elev)
+int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
 {
     STEREO_PCM appliedSource; // ステレオの音データ
     SF_INFO sfinfo;
@@ -35,7 +39,7 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
 
     //Audio,インパルス応答の読み込み
     if (!(data = AudioFileLoader(filename, &sfinfo, data))) return 0;
-    else std::cout << "OpenFile: " << filename << std::endl;
+    std::cout << "FORMAT: " << sfinfo.format << std::endl;
 
     if (!(Ldata = AudioFileLoader(Lhrtf, &Lsfinfo, Ldata))) return 0;
     else std::cout << "OpenFile: " << Lhrtf << std::endl;
@@ -70,6 +74,9 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
 
     float* Loutdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
     float* Routdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
+    float* LBuffer = (float*)calloc(FFTSIZE/2, sizeof(float));
+    float* RBuffer = (float*)calloc(FFTSIZE/2, sizeof(float));
+    float* Buffer = (float*)calloc(FFTSIZE, sizeof(float));
 
     //for FFT analysis
     //scalling
@@ -142,10 +149,21 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
         for (int j = 0; j < FFTSIZE / 2; j++) {
             Loutdata[i * FFTSIZE / OVERLAP + j] = scale * Ldst2[j][0];
             Routdata[i * FFTSIZE / OVERLAP + j] = scale * Rdst2[j][0];
+            LBuffer[j] = scale * Ldst2[j][0];
+            RBuffer[j] = scale * Rdst2[j][0];
         }
         if (leftplan2) fftwf_destroy_plan(leftplan2);
         if (rightplan2) fftwf_destroy_plan(rightplan2);
-
+        for (int j = 0; j < FFTSIZE; j++) {
+            if (j == 0 || j % 2 == 0)Buffer[j] = LBuffer[j/2];
+            else Buffer[j] = RBuffer[(j-1)/2];
+        }
+        //
+        int err;
+        err = Pa_WriteStream(streamObj, Buffer, FFTSIZE);
+        if (err != paNoError) {
+            fprintf(stderr, "error writing audio_buffer %s (rc=%d)\n", Pa_GetErrorText(err), err);
+        }
     }
 
     appliedSource.fs = SAMPLE_RATE; // 標本化周波数
@@ -158,27 +176,10 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
         appliedSource.sL[n] = Loutdata[n];
         appliedSource.sR[n] = Routdata[n];
     }
-    //ここで音声出力bufferに流せばよい？
+
     stereo_wave_write(&appliedSource, (char*)generatename); // WAVEファイルにステレオの音データを出力する 
     free(appliedSource.sL); // メモリの解放 
     free(appliedSource.sR); // メモリの解放 
-
-
-    // 入出力配列の値をcsvファイルに保存
-    /*std::fstream fs_src("src.csv", std::ios::out);
-    std::fstream fs_dst("dst.csv", std::ios::out);
-    std::fstream fs_out("output.csv", std::ios::out);
-
-    fs_src << "実部,虚部" << std::endl;
-    fs_dst << "実部,虚部" << std::endl;
-    fs_out << "実部,虚部" << std::endl;
-
-    for (int i = 0; i < FFTSIZE; i++)
-    {
-        fs_src << src[i][0] << "," << src[i][1] << std::endl;
-        fs_dst << FFTleft[i][0] << "," << FFTleft[i][1] << std::endl;
-        fs_out << Loutdata[i] << "," << Ldst2[i][1] << std::endl;
-    }*/
 
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
@@ -200,61 +201,6 @@ int applyHRTF(MONO_PCM source, int deg, int elev)
     return 0;
 }
 
-/*int main(void)
-{
-    printf("START!!!\n");
-    MONO_PCM pcm0; // モノラルの音データ
-
-    mono_wave_read(&pcm0, (char*)"sample08.wav");
-    applyHRTF(pcm0, 10, 5);
-
-    free(pcm0.s); // メモリの解放
-
-    return 0;
-}*/
-
-#include <stdio.h>
-#include <math.h>
-#include "portaudio.h"
-
-#define SAMPLE_RATE (44100)
-#define PA_SAMPLE_TYPE paFloat32
-#define FRAMES_PER_BUFFER (64)
-
-typedef float SAMPLE;
-
-static int ioCallback(const void* inputBuffer, void* outputBuffer,
-    unsigned long framesPerBuffer,
-    const PaStreamCallbackTimeInfo* timeInfo,
-    PaStreamCallbackFlags statusFlags,
-    void* userData)
-{
-    SAMPLE* out = (SAMPLE*)outputBuffer;
-    const SAMPLE* in = (const SAMPLE*)inputBuffer;
-    unsigned int i;
-    (void)timeInfo; /* Prevent unused variable warnings. */
-    (void)statusFlags;
-    (void)userData;
-
-    if (inputBuffer == NULL)
-    {
-        for (i = 0; i < framesPerBuffer; i++)
-        {
-            *out++ = 0;
-            *out++ = 0;
-        }
-    }
-    else
-    {
-        for (i = 0; i < framesPerBuffer; i++)
-        {
-            *out++ = *in;
-            *out++ = *in++;
-        }
-    }
-
-    return paContinue;
-}
 
 int main(void)
 {
@@ -286,19 +232,22 @@ int main(void)
         SAMPLE_RATE,
         FRAMES_PER_BUFFER,
         0, /* paClipOff, */ /* we won't output out of range samples so don't bother clipping them */
-        ioCallback,
+        NULL,
         NULL);
 
     if (err != paNoError) {
         Pa_Terminate();
         return 1;
     }
-
     err = Pa_StartStream(stream);
     if (err != paNoError) {
         Pa_Terminate();
         return 1;
     }
+    
+    MONO_PCM pcm0; // モノラルの音データ
+    mono_wave_read(&pcm0, (char*)"C:\\Users\\haru1\\source\\repos\\HRTF\\SoundData\\input\\asanoFloat32.wav");
+    applyHRTF(pcm0, 10, 5, stream);
 
     printf("Hit ENTER to stop program.\n");
     getchar();
