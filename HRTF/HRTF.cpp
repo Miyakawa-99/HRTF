@@ -1,24 +1,19 @@
 ﻿#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <fstream>
 #include <iostream>
-#include <windows.h>
-#include "wave.h"
+#include <wave.h>
 #include <complex>
 #include <fftw3.h>
 #include <sndfile.h>
-#include "portaudio.h"
+#include <portaudio.h>
 
 #define PA_SAMPLE_TYPE paFloat32
-#define FRAMES_PER_BUFFER (512)
-typedef float SAMPLE;
-
-#define M_PI 3.14159265358979323846264338
-#define BUFFER_COUNT 2 // マルチバッファ数
 #define OVERLAP  2
 #define FFTSIZE 1024
-#define SAMPLE_RATE 44100 
+#define SAMPLE_RATE 44100
+#define FRAMES_PER_BUFFER FFTSIZE
+
 #pragma warning(disable : 4996)
 
 int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
@@ -154,13 +149,14 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
         }
         if (leftplan2) fftwf_destroy_plan(leftplan2);
         if (rightplan2) fftwf_destroy_plan(rightplan2);
+
         for (int j = 0; j < FFTSIZE; j++) {
             if (j == 0 || j % 2 == 0)Buffer[j] = LBuffer[j/2];
-            else Buffer[j] = RBuffer[(j-1)/2];
+            else Buffer[j] = RBuffer[j / 2];
         }
         //
-        int err;
-        err = Pa_WriteStream(streamObj, Buffer, FFTSIZE);
+        PaError err;
+        err = Pa_WriteStream(streamObj, Buffer, FFTSIZE/2);
         if (err != paNoError) {
             fprintf(stderr, "error writing audio_buffer %s (rc=%d)\n", Pa_GetErrorText(err), err);
         }
@@ -169,8 +165,8 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
     appliedSource.fs = SAMPLE_RATE; // 標本化周波数
     appliedSource.bits = 16; // 量子化精度
     appliedSource.length = sfinfo.frames; // 音データの長さ 
-    appliedSource.sL = (double*)calloc(appliedSource.length, sizeof(double));  // メモリの解放 
-    appliedSource.sR = (double*)calloc(appliedSource.length, sizeof(double));  // メモリの解放 
+    appliedSource.sL = (double*)calloc(appliedSource.length, sizeof(double)); 
+    appliedSource.sR = (double*)calloc(appliedSource.length, sizeof(double));
     for (int n = 0; n < appliedSource.length; n++)
     {
         appliedSource.sL[n] = Loutdata[n];
@@ -196,7 +192,6 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
     free(Rdata);
     free(Loutdata);
     free(Routdata);
-
 
     return 0;
 }
@@ -230,7 +225,7 @@ int main(void)
         NULL,
         &outputParameters,
         SAMPLE_RATE,
-        FRAMES_PER_BUFFER,
+        FRAMES_PER_BUFFER/2,
         0, /* paClipOff, */ /* we won't output out of range samples so don't bother clipping them */
         NULL,
         NULL);
