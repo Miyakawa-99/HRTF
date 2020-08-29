@@ -12,39 +12,77 @@
 #define OVERLAP  2
 #define FFTSIZE 1024
 #define SAMPLE_RATE 44100
-#define FRAMES_PER_BUFFER FFTSIZE
+#define FRAMES_PER_BUFFER FFTSIZE/2
 
 #pragma warning(disable : 4996)
 
-int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
+int LoadHRTF(int elev, int deg, fftwf_complex* Left, fftwf_complex* Right) {
+    SF_INFO Lsfinfo, Rsfinfo;
+
+    std::string Lhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/L" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
+    std::string Rhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/R" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
+
+    float* Ldata = NULL;
+    float* Rdata = NULL;
+
+    if (!(Ldata = AudioFileLoader(Lhrtf.c_str(), &Lsfinfo, Ldata))) return 0;
+    else std::cout << "OpenFile: " << Lhrtf << std::endl;
+
+    if (!(Rdata = AudioFileLoader(Rhrtf.c_str(), &Rsfinfo, Rdata))) return 0;
+    else std::cout << "OpenFile: " << Rhrtf << std::endl;
+
+    // LeftHRTF配列のメモリ確保
+    fftwf_complex* left = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    // RightHRTF配列のメモリ確保
+    fftwf_complex* right = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
+    //LeftHRTF
+    for (int j = 0; j < FFTSIZE; j++) {
+        if (j < FFTSIZE / 2) {
+            left[j][0] = 0;
+            left[j][1] = 0;
+            right[j][0] = 0;
+            right[j][1] = 0;
+        }
+        else {
+            left[j][0] = Ldata[j - FFTSIZE / 2];
+            left[j][1] = 0;
+            right[j][0] = Rdata[j - FFTSIZE / 2];
+            right[j][1] = 0;
+        }
+    }
+    // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
+    fftwf_plan leftplan = fftwf_plan_dft_1d(FFTSIZE, left, Left, FFTW_FORWARD, FFTW_ESTIMATE);
+    fftwf_plan rightplan = fftwf_plan_dft_1d(FFTSIZE, right, Right, FFTW_FORWARD, FFTW_ESTIMATE);
+
+    // フーリエ変換実行 
+    fftwf_execute(leftplan);
+    if (leftplan) fftwf_destroy_plan(leftplan);
+    fftwf_execute(rightplan);
+    if (rightplan) fftwf_destroy_plan(rightplan);
+
+    fftw_free(left);
+    fftw_free(right);
+    return 0;
+}
+
+
+int applyHRTF(char* input, char* output, int elev, int deg, PaStream* streamObj)
 {
     STEREO_PCM appliedSource; // ステレオの音データ
     SF_INFO sfinfo;
-    SF_INFO Lsfinfo;
-    SF_INFO Rsfinfo;
 
-    const char* filename = "../SoundData/input/asano.wav";
-    const char* generatename = "../SoundData/output/result.wav";
-    const char* Lhrtf = "../SoundData/HRTFfull/elev40/L40e032a.wav";
-    const char* Rhrtf = "../SoundData/HRTFfull/elev40/R40e032a.wav";
+    std::string Lhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/L" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
+    std::string Rhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/R" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
 
     float* data = NULL;
     float* Ldata = NULL;
     float* Rdata = NULL;
 
     //Audio,インパルス応答の読み込み
-    if (!(data = AudioFileLoader(filename, &sfinfo, data))) return 0;
-    std::cout << "FORMAT: " << sfinfo.format << std::endl;
-
-    if (!(Ldata = AudioFileLoader(Lhrtf, &Lsfinfo, Ldata))) return 0;
-    else std::cout << "OpenFile: " << Lhrtf << std::endl;
-
-    if (!(Rdata = AudioFileLoader(Rhrtf, &Rsfinfo, Rdata))) return 0;
-    else std::cout << "OpenFile: " << Rhrtf << std::endl;
-
+    if (!(data = AudioFileLoader(input, &sfinfo, data))) return 0;
+    else std::cout << "FORMAT: " << sfinfo.format << std::endl;
 
     long long frame_num = (long long)(sfinfo.frames / FFTSIZE);
-
 
     // 入力配列のメモリ確保
     fftwf_complex* src= (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
@@ -52,17 +90,10 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
     fftwf_complex* Ldst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     // 入力配列FFT後メモリ確保
     fftwf_complex* Rdst = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-
-    // LeftHRTF配列のメモリ確保
-    fftwf_complex* left = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     // LeftHRTF配列FFT後メモリ確保
     fftwf_complex* FFTleft = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-
-    // RightHRTF配列のメモリ確保
-    fftwf_complex* right = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-    // RightHRTF配列FFT後メモリ確保
+    // LeftHRTF配列FFT後メモリ確保
     fftwf_complex* FFTright = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
-
     // 最終出力配列
     fftwf_complex* Ldst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     fftwf_complex* Rdst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
@@ -76,33 +107,8 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
     //for FFT analysis
     //scalling
     float scale = 1.0 / FFTSIZE*OVERLAP;
-    std::cout << "Scale: " << scale << std::endl;
 
-    //LeftHRTF
-    for (int j = 0; j < FFTSIZE; j++) {
-        if (j < FFTSIZE / 2) {
-            left[j][0] = 0;
-            left[j][1] = 0;
-            right[j][0] = 0;
-            right[j][1] = 0;
-        }
-        else {
-            left[j][0] = Ldata[j- FFTSIZE / 2];
-            left[j][1] = 0;
-            right[j][0] = Rdata[j - FFTSIZE / 2];
-            right[j][1] = 0;
-        }
-    }
-    // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
-    fftwf_plan leftplan = fftwf_plan_dft_1d(FFTSIZE, left, FFTleft, FFTW_FORWARD, FFTW_ESTIMATE);
-    fftwf_plan rightplan = fftwf_plan_dft_1d(FFTSIZE, right, FFTright, FFTW_FORWARD, FFTW_ESTIMATE);
-
-    // フーリエ変換実行 
-    fftwf_execute(leftplan);
-    if (leftplan) fftwf_destroy_plan(leftplan);
-    fftwf_execute(rightplan);
-    if (rightplan) fftwf_destroy_plan(rightplan);
-
+    LoadHRTF(elev, deg, FFTleft, FFTright);
 
     for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
 
@@ -156,7 +162,7 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
         }
         //
         PaError err;
-        err = Pa_WriteStream(streamObj, Buffer, FFTSIZE/2);
+        err = Pa_WriteStream(streamObj, Buffer, FRAMES_PER_BUFFER);
         if (err != paNoError) {
             fprintf(stderr, "error writing audio_buffer %s (rc=%d)\n", Pa_GetErrorText(err), err);
         }
@@ -173,14 +179,12 @@ int applyHRTF(MONO_PCM source, int deg, int elev, PaStream* streamObj)
         appliedSource.sR[n] = Routdata[n];
     }
 
-    stereo_wave_write(&appliedSource, (char*)generatename); // WAVEファイルにステレオの音データを出力する 
+    stereo_wave_write(&appliedSource, (char*)output); // WAVEファイルにステレオの音データを出力する 
     free(appliedSource.sL); // メモリの解放 
     free(appliedSource.sR); // メモリの解放 
 
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
-    fftw_free(left);
-    fftw_free(right);
     fftw_free(FFTleft);
     fftw_free(FFTright);
     fftw_free(Ldst);
@@ -225,7 +229,7 @@ int main(void)
         NULL,
         &outputParameters,
         SAMPLE_RATE,
-        FRAMES_PER_BUFFER/2,
+        FRAMES_PER_BUFFER,
         0, /* paClipOff, */ /* we won't output out of range samples so don't bother clipping them */
         NULL,
         NULL);
@@ -239,10 +243,11 @@ int main(void)
         Pa_Terminate();
         return 1;
     }
-    
-    MONO_PCM pcm0; // モノラルの音データ
-    mono_wave_read(&pcm0, (char*)"C:\\Users\\haru1\\source\\repos\\HRTF\\SoundData\\input\\asanoFloat32.wav");
-    applyHRTF(pcm0, 10, 5, stream);
+
+    char filename[] = "../SoundData/input/asano.wav";
+    char generatename[] = "../SoundData/output/result.wav";
+
+    applyHRTF(filename, generatename, 0, 70, stream);
 
     printf("Hit ENTER to stop program.\n");
     getchar();
