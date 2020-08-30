@@ -8,6 +8,8 @@
 #include <sndfile.h>
 #include <portaudio.h>
 
+
+
 #define PA_SAMPLE_TYPE paFloat32
 #define OVERLAP  2
 #define FFTSIZE 1024
@@ -20,7 +22,7 @@ int LoadHRTF(int elev, int deg, fftwf_complex* Left, fftwf_complex* Right) {
     SF_INFO Lsfinfo, Rsfinfo;
 
     std::string Lhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/L" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
-    std::string Rhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/R" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
+    std::string Rhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/L" + std::to_string(elev) + "e" + std::to_string(360-deg) + "a.wav";
 
     float* Ldata = NULL;
     float* Rdata = NULL;
@@ -66,23 +68,18 @@ int LoadHRTF(int elev, int deg, fftwf_complex* Left, fftwf_complex* Right) {
 }
 
 
-int applyHRTF(char* input, char* output, int elev, int deg, PaStream* streamObj)
+int applyHRTF(char* input, int elev, int deg, PaStream* streamObj)
 {
-    STEREO_PCM appliedSource; // ステレオの音データ
     SF_INFO sfinfo;
-
-    std::string Lhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/L" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
-    std::string Rhrtf = "../SoundData/HRTFfull/elev" + std::to_string(elev) + "/R" + std::to_string(elev) + "e" + std::to_string(deg) + "a.wav";
-
     float* data = NULL;
-    float* Ldata = NULL;
-    float* Rdata = NULL;
 
     //Audio,インパルス応答の読み込み
     if (!(data = AudioFileLoader(input, &sfinfo, data))) return 0;
     else std::cout << "FORMAT: " << sfinfo.format << std::endl;
 
     long long frame_num = (long long)(sfinfo.frames / FFTSIZE);
+    //scalling
+    float scale = 1.0 / FFTSIZE * OVERLAP;
 
     // 入力配列のメモリ確保
     fftwf_complex* src= (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
@@ -98,15 +95,11 @@ int applyHRTF(char* input, char* output, int elev, int deg, PaStream* streamObj)
     fftwf_complex* Ldst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
     fftwf_complex* Rdst2 = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * FFTSIZE);
 
-    float* Loutdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
-    float* Routdata = (float*)calloc(frame_num * FFTSIZE, sizeof(float));
     float* LBuffer = (float*)calloc(FFTSIZE/2, sizeof(float));
     float* RBuffer = (float*)calloc(FFTSIZE/2, sizeof(float));
     float* Buffer = (float*)calloc(FFTSIZE, sizeof(float));
 
     //for FFT analysis
-    //scalling
-    float scale = 1.0 / FFTSIZE*OVERLAP;
 
     LoadHRTF(elev, deg, FFTleft, FFTright);
 
@@ -148,8 +141,6 @@ int applyHRTF(char* input, char* output, int elev, int deg, PaStream* streamObj)
 
         //add data
         for (int j = 0; j < FFTSIZE / 2; j++) {
-            Loutdata[i * FFTSIZE / OVERLAP + j] = scale * Ldst2[j][0];
-            Routdata[i * FFTSIZE / OVERLAP + j] = scale * Rdst2[j][0];
             LBuffer[j] = scale * Ldst2[j][0];
             RBuffer[j] = scale * Rdst2[j][0];
         }
@@ -168,21 +159,6 @@ int applyHRTF(char* input, char* output, int elev, int deg, PaStream* streamObj)
         }
     }
 
-    appliedSource.fs = SAMPLE_RATE; // 標本化周波数
-    appliedSource.bits = 16; // 量子化精度
-    appliedSource.length = sfinfo.frames; // 音データの長さ 
-    appliedSource.sL = (double*)calloc(appliedSource.length, sizeof(double)); 
-    appliedSource.sR = (double*)calloc(appliedSource.length, sizeof(double));
-    for (int n = 0; n < appliedSource.length; n++)
-    {
-        appliedSource.sL[n] = Loutdata[n];
-        appliedSource.sR[n] = Routdata[n];
-    }
-
-    stereo_wave_write(&appliedSource, (char*)output); // WAVEファイルにステレオの音データを出力する 
-    free(appliedSource.sL); // メモリの解放 
-    free(appliedSource.sR); // メモリの解放 
-
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
     fftw_free(FFTleft);
@@ -192,10 +168,6 @@ int applyHRTF(char* input, char* output, int elev, int deg, PaStream* streamObj)
     fftw_free(Ldst2);
     fftw_free(Rdst2);
     free(data);
-    free(Ldata);
-    free(Rdata);
-    free(Loutdata);
-    free(Routdata);
 
     return 0;
 }
@@ -245,9 +217,8 @@ int main(void)
     }
 
     char filename[] = "../SoundData/input/asano.wav";
-    char generatename[] = "../SoundData/output/result.wav";
 
-    applyHRTF(filename, generatename, 0, 70, stream);
+    applyHRTF(filename, 0, 40, stream);
 
     printf("Hit ENTER to stop program.\n");
     getchar();
