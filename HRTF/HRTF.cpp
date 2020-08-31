@@ -103,62 +103,67 @@ int applyHRTF(char* input, int elev, int deg, PaStream* streamObj)
 
     LoadHRTF(elev, deg, FFTleft, FFTright);
 
-    for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
+    int k = 0;
+    do {
+        for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
+            if (k == 100) LoadHRTF(0, 250, FFTleft, FFTright);
+            if (k == 500) LoadHRTF(0, 300, FFTleft, FFTright);
+            std::cout << i << "\n"; //0,1,2,3,4が出力される
+            k++;
+            //copy data
+            for (int j = 0; j < FFTSIZE; j++) {
+                src[j][0] = data[i * FFTSIZE / OVERLAP + j];
+                src[j][1] = 0;
+            }
 
-        //copy data
-        for (int j = 0; j < FFTSIZE; j++) {
-            src[j][0] = data[i * FFTSIZE / OVERLAP + j];
-            src[j][1] = 0;
+            // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
+            fftwf_plan plan = fftwf_plan_dft_1d(FFTSIZE, src, Ldst, FFTW_FORWARD, FFTW_ESTIMATE);
+            // フーリエ変換実行 
+            fftwf_execute(plan);
+            if (plan) fftwf_destroy_plan(plan);
+
+            // ここに処理を書く 
+            for (int j = 0; j < FFTSIZE; j++) {
+                std::complex<float> s(Ldst[j][0], Ldst[j][1]);
+                std::complex<float> l(FFTleft[j][0], FFTleft[j][1]);
+                std::complex<float> sl = s*l;
+                Ldst[j][0] = sl.real();
+                Ldst[j][1] = sl.imag();
+                // RIGHT
+                std::complex<float> r(FFTright[j][0], FFTright[j][1]);
+                std::complex<float> sr = s * r;
+                Rdst[j][0] = sr.real();
+                Rdst[j][1] = sr.imag();
+            }
+
+           // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
+            fftwf_plan leftplan2 = fftwf_plan_dft_1d(FFTSIZE, Ldst, Ldst2, FFTW_BACKWARD, FFTW_ESTIMATE);
+            fftwf_plan rightplan2 = fftwf_plan_dft_1d(FFTSIZE, Rdst, Rdst2, FFTW_BACKWARD, FFTW_ESTIMATE);
+
+            // フーリエ変換実行
+            fftwf_execute(leftplan2);
+            fftwf_execute(rightplan2);
+
+            //add data
+            for (int j = 0; j < FFTSIZE / 2; j++) {
+                LBuffer[j] = scale * Ldst2[j][0];
+                RBuffer[j] = scale * Rdst2[j][0];
+            }
+            if (leftplan2) fftwf_destroy_plan(leftplan2);
+            if (rightplan2) fftwf_destroy_plan(rightplan2);
+
+            for (int j = 0; j < FFTSIZE; j++) {
+                if (j == 0 || j % 2 == 0)Buffer[j] = LBuffer[j/2];
+                else Buffer[j] = RBuffer[j / 2];
+            }
+            //
+            PaError err;
+            err = Pa_WriteStream(streamObj, Buffer, FRAMES_PER_BUFFER);
+            if (err != paNoError) {
+                fprintf(stderr, "error writing audio_buffer %s (rc=%d)\n", Pa_GetErrorText(err), err);
+            }
         }
-
-        // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
-        fftwf_plan plan = fftwf_plan_dft_1d(FFTSIZE, src, Ldst, FFTW_FORWARD, FFTW_ESTIMATE);
-        // フーリエ変換実行 
-        fftwf_execute(plan);
-        if (plan) fftwf_destroy_plan(plan);
-
-        // ここに処理を書く 
-        for (int j = 0; j < FFTSIZE; j++) {
-            std::complex<float> s(Ldst[j][0], Ldst[j][1]);
-            std::complex<float> l(FFTleft[j][0], FFTleft[j][1]);
-            std::complex<float> sl = s*l;
-            Ldst[j][0] = sl.real();
-            Ldst[j][1] = sl.imag();
-            // RIGHT
-            std::complex<float> r(FFTright[j][0], FFTright[j][1]);
-            std::complex<float> sr = s * r;
-            Rdst[j][0] = sr.real();
-            Rdst[j][1] = sr.imag();
-        }
-
-       // プランの生成( 配列サイズ, 入力配列, 出力配列, 変換・逆変換フラグ, 最適化フラグ)
-        fftwf_plan leftplan2 = fftwf_plan_dft_1d(FFTSIZE, Ldst, Ldst2, FFTW_BACKWARD, FFTW_ESTIMATE);
-        fftwf_plan rightplan2 = fftwf_plan_dft_1d(FFTSIZE, Rdst, Rdst2, FFTW_BACKWARD, FFTW_ESTIMATE);
-
-        // フーリエ変換実行
-        fftwf_execute(leftplan2);
-        fftwf_execute(rightplan2);
-
-        //add data
-        for (int j = 0; j < FFTSIZE / 2; j++) {
-            LBuffer[j] = scale * Ldst2[j][0];
-            RBuffer[j] = scale * Rdst2[j][0];
-        }
-        if (leftplan2) fftwf_destroy_plan(leftplan2);
-        if (rightplan2) fftwf_destroy_plan(rightplan2);
-
-        for (int j = 0; j < FFTSIZE; j++) {
-            if (j == 0 || j % 2 == 0)Buffer[j] = LBuffer[j/2];
-            else Buffer[j] = RBuffer[j / 2];
-        }
-        //
-        PaError err;
-        err = Pa_WriteStream(streamObj, Buffer, FRAMES_PER_BUFFER);
-        if (err != paNoError) {
-            fprintf(stderr, "error writing audio_buffer %s (rc=%d)\n", Pa_GetErrorText(err), err);
-        }
-    }
-
+    } while (k < 300);
     // 終了時、専用関数でメモリを開放する
     fftw_free(src);
     fftw_free(FFTleft);
@@ -216,7 +221,7 @@ int main(void)
         return 1;
     }
 
-    char filename[] = "../SoundData/input/asano.wav";
+    char filename[] = "../SoundData/input/sample08.wav";
 
     applyHRTF(filename, 0, 40, stream);
 
