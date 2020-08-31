@@ -8,7 +8,10 @@
 #include <sndfile.h>
 #include <portaudio.h>
 #include <vector>
+#include <chrono>
+#include <thread>
 
+#define M_PI  3.1415926535897932384626433
 #define PA_SAMPLE_TYPE paFloat32
 #define OVERLAP  2
 #define FFTSIZE 1024
@@ -21,7 +24,8 @@ class StereoGenerate {
 public:
     const int   INTERFACE_UPDATETIME = 50;      // 50ms update for interface
     const float DISTANCEFACTOR = 1.0f;          // Units per meter.  I.e feet would = 3.28.  centimeters would = 100
-    std::vector<float> ListenerPos;
+    std::vector<float> ListenerPos = {0,0,0};
+    float degree=0.0;
     PaError err;
     PaStream* stream;
 
@@ -74,16 +78,12 @@ public:
         return 0;
     }
 
-    int SoundSet(char* SoundName) {
-        return 0;
-    }
-
     int applyHRTF(char* input, int elev, int deg)
     {
         SF_INFO sfinfo;
         float* data = NULL;
 
-        //Audio,インパルス応答の読み込み
+        //Audioの読み込み
         if (!(data = AudioFileLoader(input, &sfinfo, data))) return 0;
         else std::cout << "FORMAT: " << sfinfo.format << std::endl;
 
@@ -112,13 +112,14 @@ public:
         //for FFT analysis
         LoadHRTF(elev, deg, FFTleft, FFTright);
 
-        int k = 0;
+        int k = 1;
         do {
             for (int i = 0; i < frame_num * OVERLAP - 1; i++) {
-                //if (k == 100) LoadHRTF(0, 250, FFTleft, FFTright);
-                if (k == 500) LoadHRTF(0, 300, FFTleft, FFTright);
+                UpdateListener(k,0.0,0.0);
+                if(k%5==0) LoadHRTF(0, degree, FFTleft, FFTright);
                 std::cout << i << "\n"; //0,1,2,3,4が出力される
-                k++;
+                k = k ++;
+                if (k == 361)k = 1;
                 //copy data
                 for (int j = 0; j < FFTSIZE; j++) {
                     src[j][0] = data[i * FFTSIZE / OVERLAP + j];
@@ -186,7 +187,7 @@ public:
         return 0;
     }
 
-    int SoundPlay() {
+    int SoundPlayInitialize() {
         PaStreamParameters outputParameters;
       
         err = Pa_Initialize();
@@ -228,6 +229,14 @@ public:
         return 0;
     }
 
+    int AudioInitialize() {
+        ListenerPos[0] = 1.0;
+        ListenerPos[1] = 0.0;
+        ListenerPos[2] = 0.0;
+
+        return 0;
+    }
+
     int CloseStream() {
         err = Pa_StopStream(stream);
         if (err != paNoError) {
@@ -248,14 +257,16 @@ public:
         ListenerPos[0] = x;
         ListenerPos[1] = y;
         ListenerPos[2] = z;
+        degree = x;
     }
 };
 
 int main(void)
 {
     StereoGenerate sound;
-    sound.SoundPlay();
-    char filename[] = "../SoundData/input/sample08.wav";
+    sound.SoundPlayInitialize();
+    sound.AudioInitialize();
+    char filename[] = "../SoundData/input/asano.wav";
     sound.applyHRTF(filename, 0, 40);
 
     printf("Hit ENTER to stop program.\n");
